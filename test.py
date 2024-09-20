@@ -216,8 +216,8 @@ def process_image(img):
 
 # img = mpimg.imread('data/frame_0003.jpg')
 
-output = 'output_v1.mp4'
-clip = VideoFileClip('VideoTrack.mp4')
+output = 'output_v3.mp4'
+clip = VideoFileClip('VideoTrack3.mp4')
 out_clip = clip.fl_image(process_image)
 out_clip.write_videofile(output, audio=False)
 
