@@ -1,7 +1,7 @@
 import cv2 as cv
 import os
 
-Chess_Board_Dimensions = (9, 6)
+Chess_Board_Dimensions = (8, 6)
 
 n = 0  # image counter
 
@@ -38,7 +38,7 @@ while True:
     image, board_detected = detect_checker_board(
         frame, gray, criteria, Chess_Board_Dimensions
     )
-    # print(ret)
+    print(board_detected)
     cv.putText(
         frame,
         f"saved_img : {n}",

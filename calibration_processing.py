@@ -3,7 +3,7 @@ import os
 import numpy as np
 
 # Chess/checker board size, dimensions
-CHESS_BOARD_DIM = (9, 6)
+CHESS_BOARD_DIM = (8, 6)
 
 # The size of squares in the checker board design.
 SQUARE_SIZE = 22  # millimeters (change it according to printed size)

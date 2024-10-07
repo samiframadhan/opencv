@@ -3,7 +3,7 @@ from cv2 import aruco
 import numpy as np
 
 # load in the calibration data
-calib_data_path = "../calib_data/MultiMatrix.npz"
+calib_data_path = "calib_data/MultiMatrix.npz"
 
 calib_data = np.load(calib_data_path)
 print(calib_data.files)
@@ -15,7 +15,7 @@ t_vectors = calib_data["tVector"]
 
 MARKER_SIZE = 6  # centimeters (measure your printed marker size)
 
-marker_dict = aruco.getPredefinedDictionary(aruco.DICT_5X5_250)
+marker_dict = aruco.getPredefinedDictionary(aruco.DICT_5X5_100)
 
 param_markers = aruco.DetectorParameters()
 
