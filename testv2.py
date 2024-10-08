@@ -166,9 +166,10 @@ def draw_lines(img, lines, color=[255, 0, 0], thickness=10):
     the full lane lines (left and right) using averaging and smoothing.
     """
     # Draw every line segment first
-    for line in lines:
-        for x1, y1, x2, y2 in line:
-            cv2.line(img, (x1, y1), (x2, y2), color, thickness)
+    if lines is not None:
+        for line in lines:
+            for x1, y1, x2, y2 in line:
+                cv2.line(img, (x1, y1), (x2, y2), color, thickness)
 
     # # Get image shape (used for extrapolation)
     # imshape = img.shape
@@ -254,17 +255,18 @@ def weighted_img(img, initial_img, α=0.8, β=0.6, γ=0.):
 def lane_finding_pipeline(img):
     hsv_img = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
     mask_white = cv2.inRange(img, (200,200,200), (255, 255, 255))
-    mask_yellow = cv2.inRange(hsv_img, (15,60,10), (30, 255, 255))
+    mask_yellow = cv2.inRange(hsv_img, (40, 60, 30), (100, 255, 255))
     color_mask = cv2.bitwise_or(mask_white, mask_yellow)
     masked_img = np.copy(img)
     masked_img[mask_yellow == 0] = [0,0,0]
 
     gray_image = grayscale(masked_img)
-    # plt.imshow(gray_image)
-    # plt.show()
+    # cv2.show()
 
     kernel_size = 5
     blurred_gray_img = gaussian_blur(gray_image, kernel_size=kernel_size)
+    # cv2.waitKey(5)
+    # cv2.imshow("gray", blurred_gray_img)
     # plt.imshow(blurred_gray_img)
     # plt.show()
 
@@ -275,19 +277,28 @@ def lane_finding_pipeline(img):
     # plt.show()
 
     imshape = img.shape
+
+    # Trapesium shape
+    #     x1,y1         x2,y2
+    #       --------------
+    #     /                \
+    #    --------------------
+    # x0,y0                 x3,y3
     vertices = np.array(
         [
             [
-                (0,imshape[0]),
-                (3*imshape[1]/9, 5.5*imshape[0]/10), 
-                (6*imshape[1]/9, 5.5*imshape[0]/10), 
-                (imshape[1],imshape[0])
+                (0,imshape[0]), #x0, y0
+                (3*imshape[1]/9, 5*imshape[0]/10), #x1,y1
+                (6*imshape[1]/9, 5*imshape[0]/10), #x2,y2
+                (imshape[1],imshape[0]) #x3,y3
             ]
         ], 
         dtype=np.int32)
     
     polygon_img = np.copy(img)
     cv2.polylines(polygon_img, vertices, isClosed=True, color=(255,0,0), thickness=3)
+    # cv2.imshow("poly",polygon_img)
+    # cv2.waitKey(1)
     # plt.imshow(polygon_img)
     # plt.title("Polygon of Region of Interest")
     # plt.show()
@@ -307,7 +318,7 @@ def lane_finding_pipeline(img):
     # plt.imshow(line_img)
     # plt.show()
 
-    cv2.imshow("mask", maskv2)
+    cv2.imshow("mask", masked_img)
     cv2.waitKey(5)
     line, mark_side, contours = get_contour_data(maskv2)
     
@@ -319,7 +330,28 @@ def lane_finding_pipeline(img):
     # plt.imshow(overlay_img)
     # plt.show()
 
-    return overlay_img
+    return (overlay_img, maskv2)
+
+def create_histogram(mask):
+    hsv_img = mask
+
+    # Define channel names and colors for plotting
+    channels = ('Hue', 'Saturation', 'Value')
+    colors = ('r', 'g', 'b')
+
+    plt.figure()
+    plt.title("HSV Histogram")
+    plt.xlabel("Pixel Value")
+    plt.ylabel("Frequency")
+
+    # Calculate and plot the histogram for each HSV channel
+    for i, channel in enumerate(channels):
+        hist = cv2.calcHist([hsv_img], [i], None, [256], [0, 256])
+        plt.plot(hist, color=colors[i], label=channel)
+        plt.xlim([0, 256])
+
+    plt.legend()
+    plt.show()
 
 def process_image(img):
     result = lane_finding_pipeline(img=img)
@@ -327,10 +359,10 @@ def process_image(img):
 
 # img = mpimg.imread('data/frame_0003.jpg')
 
-output = 'output_v5.mp4'
-clip = VideoFileClip('VideoTrack3.mp4')
-out_clip = clip.fl_image(process_image)
-out_clip.write_videofile(output, audio=False)
+# output = 'output_v2.mp4'
+# clip = VideoFileClip('VideoTrack.mp4')
+# out_clip = clip.fl_image(process_image)
+# out_clip.write_videofile(output, audio=False)
 
 # plt.imshow(img)
 # plt.show()
@@ -340,17 +372,24 @@ out_clip.write_videofile(output, audio=False)
 # plt.imshow(result)
 # plt.show()
 
-# cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
-# cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1)
-# cap.set(cv2.CAP_PROP_EXPOSURE, 200)
-# while cap.isOpened():
-#     ret, frame = cap.read()
-#     result = lane_finding_pipeline(ret)
-#     cv2.imshow('frame', result)
-#     k = cv2.waitKey(1) & 0xFF
-#     if k == ord('s'):
-#         cv2.imwrite('image.png', frame)
-#     elif k == ord('q'):
-#         break
-# cap.release()
-# cv2.destroyAllWindows()
+cap = cv2.VideoCapture(2, cv2.CAP_V4L2)
+# cap.set(cv2.CAP_PROP_CONVERT_RGB, 0)
+cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('R', 'G', 'B', ' '))
+cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1)
+cap.set(cv2.CAP_PROP_EXPOSURE, 200)
+loadmask = cv2.imread('mask.png', cv2.IMREAD_GRAYSCALE)
+while cap.isOpened():
+    ret, frame = cap.read()
+    result, mask = lane_finding_pipeline(frame)
+    
+    # result = cv2.bitwise_and(frame, frame, mask=loadmask)
+    # create_histogram(frame)
+    cv2.imshow('frame', result)
+    k = cv2.waitKey(1) & 0xFF
+    if k == ord('s'):
+        cv2.imwrite('image.png', frame)
+        cv2.imwrite('mask.png', mask)
+    elif k == ord('q'):
+        break
+cap.release()
+cv2.destroyAllWindows()
