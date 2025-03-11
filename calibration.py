@@ -28,7 +28,7 @@ def detect_checker_board(image, grayImage, criteria, boardDimension):
     return image, ret
 
 
-cap = cv.VideoCapture(0)
+cap = cv.VideoCapture(3, cv.CAP_V4L2)
 
 while True:
     _, frame = cap.read()

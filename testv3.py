@@ -3,6 +3,7 @@ import math
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import numpy as np
+from simple_pid import PID
 from moviepy.editor import VideoFileClip
 
 # video_backend = [cv2.videoio_registry.getBackendName(i) for i in cv2.videoio_registry.getBackends()]
@@ -20,24 +21,18 @@ MIN_AREA = 500
 # Minimum size for a contour to be considered part of the track
 MIN_AREA_TRACK = 5000
 
-# Robot's speed when following the line
-LINEAR_SPEED = 0.2
+SETPOINT = 38000
 
-# Proportional constant to be applied on speed when turning 
-# (Multiplied by the error value)
-KP = 1.5/100 
+KP = 0.00001
 
-# If the line is completely lost, the error value shall be compensated by:
-LOSS_FACTOR = 1.2
-
-# Send messages every $TIMER_PERIOD seconds
-TIMER_PERIOD = 0.06
-
-# When about to end the track, move for ~$FINALIZATION_PERIOD more seconds
-FINALIZATION_PERIOD = 4
-
-# The maximum error value for which the robot is still in a straight line
-MAX_ERROR = 30
+def adjust_gamma(image, gamma=1.0):
+	# build a lookup table mapping the pixel values [0, 255] to
+	# their adjusted gamma values
+	invGamma = 1.0 / gamma
+	table = np.array([((i / 255.0) ** invGamma) * 255
+		for i in np.arange(0, 256)]).astype("uint8")
+	# apply gamma correction using the lookup table
+	return cv2.LUT(image, table)
 
 def grayscale(img):
     """Applies the Grayscale transform
@@ -68,7 +63,7 @@ def crop_size(height, width):
 
     return (1*height//3, height, width//4, 3*width//4)
 
-def get_contour_data(mask):
+def get_contour_data(mask, out):
     """
     Return the centroid of the largest contour in
     the binary image 'mask' (the line) 
@@ -85,6 +80,7 @@ def get_contour_data(mask):
     crop_w_start = 0
     # print(contours)
 
+    area = 0
     for contour in contours:
         
         M = cv2.moments(contour)
@@ -99,9 +95,10 @@ def get_contour_data(mask):
                 line['y'] = int(M["m01"]/M["m00"])
 
                 # plot the area in light blue
-                # cv2.drawContours(out, contour, -1, (255,255,0), 1) 
-                # cv2.putText(out, str(M['m00']), (int(M["m10"]/M["m00"]), int(M["m01"]/M["m00"])),
-                # cv2.FONT_HERSHEY_PLAIN, 2, (255,255,0), 2)
+                cv2.drawContours(out, contour, -1, (255,255,0), 1)
+                cv2.putText(out, str(M['m00']), (int(M["m10"]/M["m00"]), int(M["m01"]/M["m00"])),
+                cv2.FONT_HERSHEY_PLAIN, 2, (255,255,0), 2)
+                area = M['m00']
             
             else:
                 # Contour is a track mark
@@ -112,9 +109,9 @@ def get_contour_data(mask):
                     mark['x'] = int(M["m10"]/M["m00"])
 
                     # plot the area in pink
-                    # cv2.drawContours(out, contour, -1, (255,0,255), 1) 
-                    # cv2.putText(out, str(M['m00']), (int(M["m10"]/M["m00"]), int(M["m01"]/M["m00"])),
-                    # cv2.FONT_HERSHEY_PLAIN, 2, (255,0,255), 2)
+                    cv2.drawContours(out, contour, -1, (255,0,255), 1) 
+                    cv2.putText(out, str(M['m00']), (int(M["m10"]/M["m00"]), int(M["m01"]/M["m00"])),
+                    cv2.FONT_HERSHEY_PLAIN, 2, (255,0,255), 2)
 
 
     if mark and line:
@@ -127,7 +124,7 @@ def get_contour_data(mask):
         mark_side = None
 
 
-    return (line, mark_side, contours)
+    return (line, mark_side, contours, area)
 
 def draw_contours(mask, contours):
     for contour in contours:
@@ -255,7 +252,6 @@ def weighted_img(img, initial_img, α=0.8, β=0.6, γ=0.):
 def lane_finding_pipeline(img):
     hsv_img = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
     mask_white = cv2.inRange(img, (200,200,200), (255, 255, 255))
-    # mask_yellow = cv2.inRange(hsv_img, (40, 60, 30), (100, 255, 255)) # Previous values
     mask_yellow = cv2.inRange(hsv_img, (75, 70, 20), (100, 255, 255))
     color_mask = cv2.bitwise_or(mask_white, mask_yellow)
     masked_img = np.copy(img)
@@ -319,9 +315,10 @@ def lane_finding_pipeline(img):
     # plt.imshow(line_img)
     # plt.show()
 
-    cv2.imshow("mask", maskv2)
+    test2 = maskv2
+    line, mark_side, contours, area = get_contour_data(maskv2, test2)
+    cv2.imshow("mask", test2)
     cv2.waitKey(5)
-    line, mark_side, contours = get_contour_data(maskv2)
     
     # print(line)
     if line:
@@ -331,7 +328,7 @@ def lane_finding_pipeline(img):
     # plt.imshow(overlay_img)
     # plt.show()
 
-    return (overlay_img, maskv2)
+    return (overlay_img, maskv2, area)
 
 def create_histogram(mask):
     hsv_img = mask
@@ -373,23 +370,59 @@ def process_image(img):
 # plt.imshow(result)
 # plt.show()
 
+pid = PID(KP, 0.0, 0.0, setpoint=SETPOINT)
+
 cap = cv2.VideoCapture(2, cv2.CAP_V4L2)
 # cap.set(cv2.CAP_PROP_CONVERT_RGB, 0)
 cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('R', 'G', 'B', ' '))
 # cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1)
 # cap.set(cv2.CAP_PROP_EXPOSURE, 200)
 loadmask = cv2.imread('mask.png', cv2.IMREAD_GRAYSCALE)
+count = 0
+gamma = 1.0
+add = True
 while cap.isOpened():
     ret, frame = cap.read()
-    result, mask = lane_finding_pipeline(frame)
+    frame = adjust_gamma(frame, gamma)
+    result, mask, area = lane_finding_pipeline(frame)
     
-    # result = cv2.bitwise_and(frame, frame, mask=loadmask)
     # create_histogram(frame)
+    count += 1
+    if count > 20:
+        if area != 0:
+            c = pid(area)
+            # control = error * KP
+            # gamma += error * KP
+            if add:
+                gamma += c
+            else:
+                gamma -= c
+        else:
+            if gamma <= 0.2:
+                add = True
+            else:
+                add = False
+            gamma = 1.0
+
+    cv2.putText(result, str(gamma), (0, 0),
+                cv2.FONT_HERSHEY_PLAIN, 2, (255,255,0), 2)
     cv2.imshow('frame', result)
     k = cv2.waitKey(1) & 0xFF
     if k == ord('s'):
         cv2.imwrite('image.png', frame)
         cv2.imwrite('mask.png', mask)
+    elif k == ord('i'):
+        gamma += 0.1
+    elif k == ord('d'):
+        gamma -= 0.1
+    elif k == ord('h'):
+        create_histogram(frame)
+    elif k == ord('v'):
+        crop = cv2.bitwise_and(frame, frame, mask=loadmask)
+        create_histogram(crop)
+        plt.imshow(crop)
+        plt.show()
+        # print(crop)
     elif k == ord('q'):
         break
 cap.release()
