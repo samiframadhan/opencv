@@ -3,15 +3,6 @@ import math
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import numpy as np
-from moviepy.editor import VideoFileClip
-
-# video_backend = [cv2.videoio_registry.getBackendName(i) for i in cv2.videoio_registry.getBackends()]
-# print(video_backend)
-# print(cv2.CAP_FFMPEG)
-# print(cv2.CAP_GSTREAMER)
-# print(cv2.CAP_INTEL_MFX)
-# print(cv2.CAP_V4L2)
-# print(cv2.CAP_IMAGES)
 
 ## User-defined parameters: (Update these values to your liking)
 # Minimum size for a contour to be considered anything
@@ -22,10 +13,6 @@ MIN_AREA_TRACK = 5000
 
 # Robot's speed when following the line
 LINEAR_SPEED = 0.2
-
-# Proportional constant to be applied on speed when turning 
-# (Multiplied by the error value)
-KP = 1.5/100 
 
 # If the line is completely lost, the error value shall be compensated by:
 LOSS_FACTOR = 1.2
@@ -262,20 +249,13 @@ def lane_finding_pipeline(img):
     masked_img[mask_yellow == 0] = [0,0,0]
 
     gray_image = grayscale(masked_img)
-    # cv2.show()
 
     kernel_size = 5
     blurred_gray_img = gaussian_blur(gray_image, kernel_size=kernel_size)
-    # cv2.waitKey(5)
-    # cv2.imshow("gray", blurred_gray_img)
-    # plt.imshow(blurred_gray_img)
-    # plt.show()
 
     low_thresh = 50
     high_thresh = 90
     edges_img = canny(blurred_gray_img, low_threshold=low_thresh, high_threshold=high_thresh)
-    # plt.imshow(edges_img)
-    # plt.show()
 
     imshape = img.shape
 
@@ -298,16 +278,9 @@ def lane_finding_pipeline(img):
     
     polygon_img = np.copy(img)
     cv2.polylines(polygon_img, vertices, isClosed=True, color=(255,0,0), thickness=3)
-    # cv2.imshow("poly",polygon_img)
-    # cv2.waitKey(1)
-    # plt.imshow(polygon_img)
-    # plt.title("Polygon of Region of Interest")
-    # plt.show()
     
     masked_edges = region_of_interest(edges_img, vertices=vertices)
     maskv2 = region_of_interest(blurred_gray_img, vertices)
-    # plt.imshow(masked_edges)
-    # plt.show()
 
     rho = 2
     theta = np.pi / 180
@@ -315,21 +288,15 @@ def lane_finding_pipeline(img):
     min_line_len = 8
     max_line_gap = 5
     line_img = hough_lines(masked_edges, rho, theta, threshold, min_line_len, max_line_gap)
-    # centroid = 
-    # plt.imshow(line_img)
-    # plt.show()
 
     cv2.imshow("mask", maskv2)
     cv2.waitKey(5)
     line, mark_side, contours = get_contour_data(maskv2)
     
-    # print(line)
     if line:
         cv2.circle(line_img, (line['x'], line['y']), 5, (0,255,0), 7)
 
     overlay_img = weighted_img(line_img, img)
-    # plt.imshow(overlay_img)
-    # plt.show()
 
     return (overlay_img, maskv2)
 
@@ -358,33 +325,22 @@ def process_image(img):
     result = lane_finding_pipeline(img=img)
     return result
 
-# img = mpimg.imread('data/frame_0003.jpg')
+filename = 'VideoTrack.mp4'
+cap = cv2.VideoCapture(filename)
 
-# output = 'output_v2.mp4'
-# clip = VideoFileClip('VideoTrack.mp4')
-# out_clip = clip.fl_image(process_image)
-# out_clip.write_videofile(output, audio=False)
-
-# plt.imshow(img)
-# plt.show()
-
-# result = lane_finding_pipeline(img)
-
-# plt.imshow(result)
-# plt.show()
-
-cap = cv2.VideoCapture(2, cv2.CAP_V4L2)
-# cap.set(cv2.CAP_PROP_CONVERT_RGB, 0)
 cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('R', 'G', 'B', ' '))
-# cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1)
-# cap.set(cv2.CAP_PROP_EXPOSURE, 200)
-loadmask = cv2.imread('mask.png', cv2.IMREAD_GRAYSCALE)
+
+output = 'output_v2.mp4'
+fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+result_writer = cv2.VideoWriter(output, fourcc, 20.0, (640, 480))
+
 while cap.isOpened():
     ret, frame = cap.read()
     result, mask = lane_finding_pipeline(frame)
     
     # result = cv2.bitwise_and(frame, frame, mask=loadmask)
     # create_histogram(frame)
+    result_writer.write(result)
     cv2.imshow('frame', result)
     k = cv2.waitKey(1) & 0xFF
     if k == ord('s'):
@@ -393,4 +349,5 @@ while cap.isOpened():
     elif k == ord('q'):
         break
 cap.release()
+result_writer.release()
 cv2.destroyAllWindows()
